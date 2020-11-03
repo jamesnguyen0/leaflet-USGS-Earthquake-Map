@@ -1,76 +1,90 @@
-// https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson
-
-// Store our API endpoint inside queryUrl
-var queryUrl = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson"
-
-// Perform a GET request to the query URL
-d3.json(queryUrl, function(data) {
-  // Once we get a response, send the data.features object to the createFeatures function
-  createFeatures(data.features);
+var myMap = L.map("map", {
+  center: [27.876714, -52.285434],
+  zoom: 3
 });
 
-function createFeatures(earthquakeData) {
+// tile layer
+L.tileLayer("https://api.mapbox.com/styles/v1/{id}/tiles/{z}/{x}/{y}?access_token={accessToken}", {
+  attribution: "© <a href='https://www.mapbox.com/about/maps/'>Mapbox</a> © <a href='http://www.openstreetmap.org/copyright'>OpenStreetMap</a> <strong><a href='https://www.mapbox.com/map-feedback/' target='_blank'>Improve this map</a></strong>",
+  tileSize: 512,
+  maxZoom: 18,
+  zoomOffset: -1,
+  id: "mapbox/outdoors-v11",
+  accessToken: API_KEY
+}).addTo(myMap);
 
-  // Define a function we want to run once for each feature in the features array
-  // Give each feature a popup describing the place and time of the earthquake
-  function onEachFeature(feature, layer) {
-    layer.bindPopup("<h3>" + feature.properties.place +
-      "</h3><hr><p>" + new Date(feature.properties.time) + "</p>");
+// url
+var queryurl = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson";
+
+// Grab the data with d3
+d3.json(queryurl, function(response) {
+
+  // Conditionals for the depth of the quake
+  function setColor(feature) {
+      
+      switch (true) {
+
+          case feature >= 90: return "#008000";
+          case feature >= 70: return "#FF4500";
+          case feature >= 50: return "#FFA500";
+          case feature >= 30: return "#ffff00";
+          case feature >= 10: return "#b4cd32";
+
+          default: return "#73cd32" 
+      };
   }
 
-  // Create a GeoJSON layer containing the features array on the earthquakeData object
-  // Run the onEachFeature function once for each piece of data in the array
-  var earthquakes = L.geoJSON(earthquakeData, {
-    onEachFeature: onEachFeature
-  });
+  // magnitude multiplier
+  function getRadius(feature) {
+      return feature * 3.5
+  }
 
-  // Sending our earthquakes layer to the createMap function
-  createMap(earthquakes);
-}
+  // Add circles to map
+  L.geoJson(response, {
 
-function createMap(earthquakes) {
+      pointToLayer: function(feature, coordinates) {
+          return L.circleMarker(coordinates)
+      },
 
-  // Define streetmap and darkmap layers
-  var streetmap = L.tileLayer("https://api.mapbox.com/styles/v1/{id}/tiles/{z}/{x}/{y}?access_token={accessToken}", {
-    attribution: "© <a href='https://www.mapbox.com/about/maps/'>Mapbox</a> © <a href='http://www.openstreetmap.org/copyright'>OpenStreetMap</a> <strong><a href='https://www.mapbox.com/map-feedback/' target='_blank'>Improve this map</a></strong>",
-    tileSize: 512,
-    maxZoom: 18,
-    zoomOffset: -1,
-    id: "mapbox/streets-v11",
-    accessToken: API_KEY
-  });
+      style: function(feature) {
+          return {
+              opacity: 1,
+              fillColor: setColor(feature.geometry.coordinates[2]),
+              radius: getRadius(feature.properties.mag),
+              fillOpacity: 0.75
+          }
+      },
+      onEachFeature: function(feature, layer) {
+          layer.bindPopup("<h3>Magnitude: " +
+           feature.properties.mag +
+            "</h3> <h3>Location: " +
+             feature.properties.place +
+              "</h3>" + "<h3>Quake Depth: " +
+               feature.geometry.coordinates[2] + "</h3>")
+      }
+  }).addTo(myMap)
+  
+  // Create legend
+  var legend = L.control({ position: "bottomright" });
 
-  var darkmap = L.tileLayer("https://api.mapbox.com/styles/v1/mapbox/{id}/tiles/{z}/{x}/{y}?access_token={accessToken}", {
-    attribution: "Map data &copy; <a href=\"https://www.openstreetmap.org/\">OpenStreetMap</a> contributors, <a href=\"https://creativecommons.org/licenses/by-sa/2.0/\">CC-BY-SA</a>, Imagery © <a href=\"https://www.mapbox.com/\">Mapbox</a>",
-    maxZoom: 18,
-    id: "dark-v10",
-    accessToken: API_KEY
-  });
+  legend.onAdd = function (feature) {
+      
+    // start-up values
+      var div = L.DomUtil.create("div", "depth legend");
+      var color = ["#008000", "#73cd32", "#b4cd32", "#ffff00", "#FFA500", "#FF4500"];
+      var depths = ["-10-10", "10-30", "30-50", "50-70", "70-90", "90+"];
 
-  // Define a baseMaps object to hold our base layers
-  var baseMaps = {
-    "Street Map": streetmap,
-    "Dark Map": darkmap
+      // add title
+      div.innerHTML += "<h4>Earthquake Depth</h4>"   
+      
+      // populate legend div elements
+      for (var i = 0; i < depths.length; i++) {
+          div.innerHTML += "<div><span style='background-color: " + color[i] + "'></span>" + depths[i] + "</div>"
+      }
+
+      return div;
   };
+  // Add legend to map
+  legend.addTo(myMap);
 
-  // Create overlay object to hold our overlay layer
-  var overlayMaps = {
-    Earthquakes: earthquakes
-  };
-
-  // Create our map, giving it the streetmap and earthquakes layers to display on load
-  var myMap = L.map("map", {
-    center: [
-      37.09, -95.71
-    ],
-    zoom: 5,
-    layers: [streetmap, earthquakes]
-  });
-
-  // Create a layer control
-  // Pass in our baseMaps and overlayMaps
-  // Add the layer control to the map
-  L.control.layers(baseMaps, overlayMaps, {
-    collapsed: false
-  }).addTo(myMap);
-}
+});
